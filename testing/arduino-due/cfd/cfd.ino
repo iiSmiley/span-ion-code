@@ -279,42 +279,42 @@ void loop() {
     }
 
     // TDC reads
-    else if (inputString == "tdcmainsingleread0\n") {
+    else if (inputString == "tdcreadmainsingle0\n") {
       tdc_read_print(pin_spi_main_single0_csb,
         pin_tdc_main_single0_en,
         pin_spi_din,
         pin_spi_main_single0_dout,
         pin_spi_main_single0_clk);
     }
-    else if (inputString == "tdcmainsingleread1\n") {
+    else if (inputString == "tdcreadmainsingle1\n") {
       tdc_read_print(pin_spi_main_single1_csb,
         pin_tdc_main_single1_en,
         pin_spi_din,
         pin_spi_main_single1_dout,
         pin_spi_main_single1_clk);
     }
-    else if (inputString == "tdcsmallsingleread0\n") {
+    else if (inputString == "tdcreadsmallsingle0\n") {
       tdc_read_print(pin_spi_small_single0_csb,
         pin_tdc_small_single0_en,
         pin_spi_din,
         pin_spi_small_single0_dout,
         pin_spi_small_single0_clk);
     }
-    else if (inputString == "tdcsmallsingleread1\n") {
+    else if (inputString == "tdcreadsmallsingle1\n") {
       tdc_read_print(pin_spi_small_single1_csb,
         pin_tdc_small_single1_en,
         pin_spi_din,
         pin_spi_small_single1_dout,
         pin_spi_small_single1_clk);
     }
-    else if (inputString == "tdcmaindualread\n") {
+    else if (inputString == "tdcreadmaindual\n") {
       tdc_read_print(pin_spi_main_dual_csb,
         pin_tdc_main_dual_en,
         pin_spi_din,
         pin_spi_main_dual_dout,
         pin_spi_main_dual_clk);
     }
-    else if (inputString == "tdcsmalldualread\n") {
+    else if (inputString == "tdcreadsmalldual\n") {
       tdc_read_print(pin_spi_small_dual_csb,
         pin_tdc_small_dual_en,
         pin_spi_din,
@@ -323,12 +323,70 @@ void loop() {
     }
 
     // TDC configs
-    else if (inputString == "tdcmainsingleconfig0\n") {
+    else if (inputString == "tdcconfigmainsingle0\n") {
       tdc_config(pin_spi_main_single0_csb,
         pin_tdc_main_single0_en,
         pin_spi_din,
         pin_spi_main_single0_clk,
         pin_tdc_main_single0_trig);
+    }
+    else if (inputString == "tdcconfigmainsingle1\n") {
+      tdc_config(pin_spi_main_single1_csb,
+        pin_tdc_main_single1_en,
+        pin_spi_din,
+        pin_spi_main_single1_clk,
+        pin_tdc_main_single1_trig);
+    }
+    else if (inputString == "tdcconfigsmallsingle0\n") {
+      tdc_config(pin_spi_small_single0_csb,
+        pin_tdc_small_single0_en,
+        pin_spi_din,
+        pin_spi_small_single0_clk,
+        pin_tdc_small_single0_trig);
+    }
+    else if (inputString == "tdcconfigsmallsingle1\n") {
+      tdc_config(pin_spi_small_single1_csb,
+        pin_tdc_small_single1_en,
+        pin_spi_din,
+        pin_spi_small_single1_clk,
+        pin_tdc_small_single1_trig);
+    }
+    else if (inputString == "tdcconfigmaindual\n") {
+      tdc_config(pin_spi_main_dual_csb,
+        pin_tdc_main_dual_en,
+        pin_spi_din,
+        pin_spi_main_dual_clk,
+        pin_tdc_main_dual_trig);
+    }
+    else if (inputString == "tdcconfigsmalldual\n") {
+      tdc_config(pin_spi_small_dual_csb,
+        pin_tdc_small_dual_en,
+        pin_spi_din,
+        pin_spi_small_dual_clk,
+        pin_tdc_small_dual_trig);
+    }
+
+    // TDC resets
+    else if (inputString == "tdcresetmainsingle0\n") {
+      tdc_reset(pin_tdc_main_single0_en);
+    }
+    else if (inputString == "tdcresetmainsingle1\n") {
+      tdc_reset(pin_tdc_main_single1_en);
+    }
+    else if (inputString == "tdcresetsmallsingle0\n") {
+      tdc_reset(pin_tdc_small_single0_en);
+    }
+    else if (inputString == "tdcresetsmallsingle1\n") {
+      tdc_reset(pin_tdc_small_single1_en);
+    }
+    else if (inputString == "tdcresetmaindual\n") {
+      tdc_reset(pin_tdc_main_dual_en);
+    }
+    else if (inputString == "tdcresetsmalldual\n") {
+      tdc_reset(pin_tdc_small_dual_en);
+    }
+    else if (inputString == "tdclatchreset\n") {
+      tdc_reset(pin_latch_rstb);
     }
 
     // Reset to listen for a new '\n' terminated string over serial
