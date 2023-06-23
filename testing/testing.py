@@ -18,42 +18,54 @@ def sanity_serial(uC_port, baudrate=115200, num_iterations=5):
 		print(uC_ser.readline())
 	uC_ser.close()
 
-def sanity_mcp_pulse(teensy_port, num_iterations, asc_params):
+def sanity_dg535_pulse(uC_port, num_iterations, asc_params, asc_kwargs, dg535_kwargs):
 	''''''
-	# Open connections to Teensy and DG535
-	uC_ser = serial.Serial(port=teensy_port,
+	# Open connections to uC and DG535
+	uC_ser = serial.Serial(port=uC_port,
                     baudrate=19200,
                     parity=serial.PARITY_NONE,
                     stopbits=serial.STOPBITS_ONE,
                     bytesize=serial.EIGHTBITS,
                     timeout=5)
 
+	rm = pyvisa.ResourceManager()
+	dg535 = DG535(rm)
+	dg535.open_prologix(ip_addr=dg535_kwargs["ip_addr"], gpib_addr=dg535_kwargs["gpib_addr"])
+
 	# Program the chip
 	asc = scan.construct_ASC(**asc_params)
-	scan.program_scan(ser=uC_ser, ASC=asc)
+	# scan.program_scan(ser=uC_ser, ASC=asc, **asc_kwargs)
 
+	# Configure the DG535
+	cmd_lst = [
+		"TM 2",									# Single shot trigger
+		"DT 2,1,1e-9",							# A = T0 + 1ns
+		f"DT 3,2,{dg535_kwargs['tpulse']}",		# B = A + tpulse
+		"TZ 4,0",								# AB/-AB termination 50Ohm
+		"OM 4,3",								# AB/-AB output VARiable
+		f"OO 4,{dg535_kwargs['vin_bias']}",		# AB/-AB offset = vin_bias
+		f"OA 4,{dg535_kwargs['vin_amp']}",		# AB/-AB amplitude = vin_amp
+	]
+
+	for cmd in cmd_lst:
+		dg535.write(cmd)
+
+	# Trigger the DG535 repeatedly, watch the output
 	for _ in range(num_iterations):
-		# Reset the latched output
-		uC_ser.write(b'tdcmainreset\n')
-		# print(uC_ser.readline())
-		uC_ser.readline()
-
-		# Feed in the start pulse to get things going
-		# print('--- Feeding START')
-		uC_ser.write(b'tdcmainstart\n')
-		# print(uC_ser.readline())
-		uC_ser.readline()
+		# Reset the latched signals
+		uC_ser.write(b'tdclatchreset\n')
+		dg535.write("SS")
 
 	return
 
 
-def test_tdiff_main(teensy_port, num_iterations, asc_params,
+def test_tdiff_main(uC_port, num_iterations, asc_params,
 	 	ip_addr='192.168.4.1', gpib_addr=15, 
 		vin_bias=0.8, vin_amp=0.2, tref_clk=1/15e6):
 	'''
 	Measures the time between the input DG535 pulse and the output pulse.
 	Inputs:
-		teensy_port: String. Name of the COM port the main board Teensy is 
+		uC_port: String. Name of the COM port the main board uC is 
 			connected to.
 		num_iterations: Integer. Number of times to measure for a single
 			amplitude.
@@ -79,8 +91,8 @@ def test_tdiff_main(teensy_port, num_iterations, asc_params,
 			DAC voltage
 		See <overleaf link> to figure out how things are meant to be wired up.
 	'''
-	# Open connections to Teensy and DG535
-	uC_ser = serial.Serial(port=teensy_port,
+	# Open connections to uC and DG535
+	uC_ser = serial.Serial(port=uC_port,
                     baudrate=19200,
                     parity=serial.PARITY_NONE,
                     stopbits=serial.STOPBITS_ONE,
@@ -245,7 +257,7 @@ def test_tdiff_main(teensy_port, num_iterations, asc_params,
 	return tdiff_vec
 
 
-def test_fflvl_jitter(teensy_port, num_iterations, twait=250e-9,
+def test_fflvl_jitter(uC_port, num_iterations, twait=250e-9,
 		ip_addr='192.168.1.4', gpib_addr=15, tref_clk=1/15e6):
 	'''
 	Measures the time between the input DG535 pulse and the output pulse 
@@ -253,7 +265,7 @@ def test_fflvl_jitter(teensy_port, num_iterations, twait=250e-9,
 	to measure the jitter of board-level components, so I highly recommend
 	using this on a board that does not have a functional chip on it.
 	Inputs:
-		teensy_port: String. Name of the COM port the main board Teensy is 
+		uC_port: String. Name of the COM port the main board uC is 
 			connected to.
 		num_iterations: Integer. Number of times to measure for a single
 			amplitude.
@@ -273,8 +285,8 @@ def test_fflvl_jitter(teensy_port, num_iterations, twait=250e-9,
 		See <overleaf link> to figure out how things are meant to be wired up.
 
 	'''
-	# Open connections to Teensy and DG535
-	uC_ser = serial.Serial(port=teensy_port,
+	# Open connections to uC and DG535
+	uC_ser = serial.Serial(port=uC_port,
                     baudrate=19200,
                     parity=serial.PARITY_NONE,
                     stopbits=serial.STOPBITS_ONE,
@@ -446,27 +458,27 @@ def test_fflvl_jitter(teensy_port, num_iterations, twait=250e-9,
 	return tdiff_vec
 
 
-def test_tdiff_small(teensy_port, num_iterations, asc_params,
-	 	ip_addr='192.168.4.1', gpib_addr=15, 
-		vin_bias=0.7, vin_amp=0.6, tref_clk=1/15e6):
+def test_tdiff_small(uC_port, num_iterations, asc_params,
+	 	ip_addr='192.168.4.1', gpib_addr=15, channel=0, num_filler=0,
+		vin_bias=0.7, vin_amp=0.6, tpulse=1e-9, tref_clk=1/15e6):
 	'''
 	Measures the time between the input DG535 pulse and the output pulse.
 	Inputs:
-		teensy_port: String. Name of the COM port the main board Teensy is 
+		uC_port: String. Name of the COM port the main board uC is 
 			connected to.
 		num_iterations: Integer. Number of times to measure for a single
 			amplitude.
 		asc_params: Dictionary of collections of integers, used in
 			programming the scan chain. See scan.construct_asc.
-		twait: Float. Time in seconds between measurement start and actual 
-			DG535 trigger. e.g. twait = 1e-9 means the DG535 triggers 1ns after
-			the measurement actually starts.
-		tdelay: Float. Time in seconds to delay the input pulse.
 		ip_addr: String. The IP address of the Prologix hooked up
 			to the DG535.
 		gpib_addr: Integer. The GPIB address associated with the DG535.
+		channel: 0 or 1. Which channel on the board is being tested.
+		num_filler: Nonnegative integer. Number of extra filler 
+			read/writes to feed through the serial prior to programming scan.
 		vin_bias: Float. Input bias in V for the input pulse.
 		vin_amp: Float. Pulse amplitude in V for the signal shaping.
+		tpulse: Float. Pulse width to be fed into the chip.
 		tref_clk: Float. Period in seconds of the TDC reference clock.
 	Returns:
 		tdiff_vec: Collection of floats. The time difference (in seconds) 
@@ -474,8 +486,8 @@ def test_tdiff_small(teensy_port, num_iterations, asc_params,
 	Notes:
 		See <overleaf link> to figure out how things are meant to be wired up.
 	'''
-	# Open connections to Teensy and DG535
-	uC_ser = serial.Serial(port=teensy_port,
+	# Open connections to uC and DG535
+	uC_ser = serial.Serial(port=uC_port,
                     baudrate=19200,
                     parity=serial.PARITY_NONE,
                     stopbits=serial.STOPBITS_ONE,
@@ -517,23 +529,27 @@ def test_tdiff_small(teensy_port, num_iterations, asc_params,
 		wdata=wdata2)
 
 	# DG535 settings for measurement
-	# - Channel T0 comes roughly 85ns after TRIG is received
-	# - It branches 3 ways--unaltered, delayed, and attenuated
+	# - Channel T0 comes roughly 85ns after trigger is received
+	# - Channel A is set to 1ns after T0
+	# - Channel B is set to tpulse after A so AB gives a tpulse-wide pulse
+	# - Channel AB will be the input to the chip; T0 = START pulse to TDC
 	cmd_lst = [
-		"TM 1",						# External trigger
-		"TS 1",						# Rising edge trigger
-		"TL 1.00",					# Edge trigger level
-		"TZ 0,1",					# Trigger is high impedance
-		"TZ 1,1",					# T0 termination HiZ
-		# "TZ 1,0",					# T0 termination 50Ohm
+		"TM 2",						# Single shot trigger
+		"TZ 1,0",					# T0 termination 50Ohm
 		"OM 1,3",					# T0 output VARiable
-		f"OA 1,{vin_amp}",			# T0 channel amplitude
-		f"OO 1,{vin_bias}",			# T0 channel offset
+		"OO 1,0",					# T0 offset = 0V
+		"OA 1,3.3",					# T0 amplitude = 3.3V (for the TDC)
+		"DT 2,1,1e-9",				# A = T0 + 1ns
+		f"DT 3,2,{tpulse}",			# B = A + tpulse
+		"TZ 4,0",					# AB/-AB termination 50Ohm
+		"OM 4,3",					# AB/-AB output VARiable
+		f"OO 4,{vin_bias}",			# AB/-AB offset = vin_bias
+		f"OA 4,{vin_amp}",			# AB/-AB amplitude = vin_amp
 	]
 
 	# Program the chip
 	asc = scan.construct_ASC(**asc_params)
-	scan.program_scan(ser=uC_ser, ASC=asc)
+	scan.program_scan(ser=uC_ser, ASC=asc, channel=channel, num_filler=num_filler)
 
 	# Control the DG535
 	for cmd in cmd_lst:
@@ -544,7 +560,7 @@ def test_tdiff_small(teensy_port, num_iterations, asc_params,
 	for _ in range(num_iterations):
 		# Reset the TDC
 		# print('Resetting TDC')
-		uC_ser.write(b'tdcsmallreset\n')
+		uC_ser.write((f"tdcresetsmallsingle{channel}\n").encode())
 		# print(uC_ser.readline())
 		uC_ser.readline()
 
@@ -566,15 +582,15 @@ def test_tdiff_small(teensy_port, num_iterations, asc_params,
 
 		# Configure the TDC
 		# print('--- Configuring CONFIG1')
-		uC_ser.write(b'tdcsmallconfig\n')
+		uC_ser.write((f"tdcconfigsmallsingle{channel}\n").encode())
 		uC_ser.write(cmd_cfg1.to_bytes(1, 'big'))
 		uC_ser.write(wdata1.to_bytes(1, 'big'))
 		for _ in range(5):
-			# print(uC_ser.readline())
 			uC_ser.readline()
+			# print(uC_ser.readline())
 
 		# print('--- Configuring CONFIG2')
-		uC_ser.write(b'tdcsmallconfig\n')
+		uC_ser.write((f"tdcconfigsmallsingle{channel}\n"))
 		uC_ser.write(cmd_cfg2.to_bytes(1, 'big'))
 		uC_ser.write(wdata2.to_bytes(1, 'big'))
 		for _ in range(5):
@@ -583,15 +599,15 @@ def test_tdiff_small(teensy_port, num_iterations, asc_params,
 
 		# Feed in the start pulse to get things going
 		# print('--- Feeding START')
-		uC_ser.write(b'tdcsmallstart\n')
-		# print(uC_ser.readline())
+		dg535.write("SS")
 		uC_ser.readline()
+		# print(uC_ser.readline())
 
 		# Wait until measurement done
 		has_finished = False
 		while not has_finished:
 			val_int_status = tdc.tdc_read(uC_ser=uC_ser,
-				reg="INT_STATUS", chain="small")
+				reg="INT_STATUS", chain="small", is_single=True, channel=channel)
 			has_started = tdc.is_started(val_int_status)
 			has_finished = tdc.is_done(val_int_status)
 			has_ovfl_clk = tdc.is_overflow_clk(val_int_status)
@@ -615,7 +631,7 @@ def test_tdiff_small(teensy_port, num_iterations, asc_params,
 		reg_data_dict = dict()
 		for reg in reg_lst:
 			reg_data_dict[reg] = tdc.tdc_read(uC_ser=uC_ser,
-				reg=reg, chain="small")
+				reg=reg, chain="small", is_single=True, channel=channel)
 			# print(f'-> {reg_data_dict[reg]}')
 
 		# From registers, calculate the time between the START and STOP triggers
@@ -640,11 +656,11 @@ def test_tdiff_small(teensy_port, num_iterations, asc_params,
 
 	return tdiff_vec
 
-def test_offset_small(teensy_port, aux_port, num_iterations, vtest_dict, vdd=1.8,
+def test_offset_small(uC_port, aux_port, num_iterations, vtest_dict, vdd=1.8,
 		vfsr=3.3, precision=16, tref_clk=1/15e6):
 	'''
 	Inputs:
-		teensy_port:
+		uC_port:
 		aux_port:
 		num_iterations: Integer. Number of times to measure for a single
 			voltage setup.
@@ -653,7 +669,7 @@ def test_offset_small(teensy_port, aux_port, num_iterations, vtest_dict, vdd=1.8
 			(negative input, positive input) as (0.45,0.55)V and (0.55,0.45)V.
 		vdd: Float. Supply voltage of the device in question. This will put a
 			cap on the maximum input voltage.
-		vfsr: Float. The Teensy analogWrite full scale range in volts.
+		vfsr: Float. The uC analogWrite full scale range in volts.
 		precision: Integer. The number of bits to use in _both_ Teensies'
 			analogRead and analogWrite.
 		tref_clk: Float. Clock period of the reference clock in seconds.
@@ -665,13 +681,13 @@ def test_offset_small(teensy_port, aux_port, num_iterations, vtest_dict, vdd=1.8
 	Notes:
 		Intended for use in measuring the static offset of the ZCD.
 		Highly recommend having at least 100 iterations to account for noise.
-		The argument for precision should match whatever's in the Teensy code!
+		The argument for precision should match whatever's in the uC code!
 	'''
 	overflow_fracs = {vincm:dict(vdiff_vec=tuple(), overflow_fracs=tuple())
 		for vincm in vtest_dict.keys()}
 
 	# Open serial connections
-	uC_ser = serial.Serial(port=teensy_port,
+	uC_ser = serial.Serial(port=uC_port,
                     baudrate=19200,
                     parity=serial.PARITY_NONE,
                     stopbits=serial.STOPBITS_ONE,
@@ -685,7 +701,7 @@ def test_offset_small(teensy_port, aux_port, num_iterations, vtest_dict, vdd=1.8
                     bytesize=serial.EIGHTBITS,
                     timeout=5)
 
-	# Discretization of the Teensy output voltage
+	# Discretization of the uC output voltage
 	vlsb = vfsr / (2**precision)
 
 	# Construct the TDC config commands
@@ -804,31 +820,31 @@ def test_offset_small(teensy_port, aux_port, num_iterations, vtest_dict, vdd=1.8
 
 	return overflow_fracs
 
-def test_pk_static(teensy_port, aux_port, num_iterations, vtest_vec, vfsr=3.3, 
+def test_pk_static(uC_port, aux_port, num_iterations, vtest_vec, vfsr=3.3, 
 	precision=16, t_wait=0.01):
 	'''
 	Inputs:
-		teensy_port: String. Name of the COM port the main board Teensy is 
+		uC_port: String. Name of the COM port the main board uC is 
 			connected to.
-		aux_port: String. Name of the COM port the auxiliary Teensy is connected
+		aux_port: String. Name of the COM port the auxiliary uC is connected
 			to.
 		num_iterations: Integer. Number of times to measure a single vtest.
 		vtest_vec: Collection of ideal test voltages. These will be converted to 
-			LSBs for the Teensy's analogWrite. Repeated values will be removed.
-		vfsr: Float. The Teensy analogWrite full scale range in volts.
+			LSBs for the uC's analogWrite. Repeated values will be removed.
+		vfsr: Float. The uC analogWrite full scale range in volts.
 		precision: Integer. The number of bits to use in _both_ Teensies'
 			analogRead and analogWrite.
 		t_wait: Float. Time in seconds to wait between each iteration.
 	Returns:
 		vtest_real_dict: Dictionary with key:value of (ideal test voltage):
-			(real test voltage given Teensy's precision restrictions).
+			(real test voltage given uC's precision restrictions).
 		vtest_vout_dict: Dictionary with key:value (ideal vtest):(collection
 			of output voltages)
 	Notes:
-		The argument for precision should match whatever's in the Teensy code!
+		The argument for precision should match whatever's in the uC code!
 	'''
 	# Open serial connections
-	uC_ser = serial.Serial(port=teensy_port,
+	uC_ser = serial.Serial(port=uC_port,
                     baudrate=19200,
                     parity=serial.PARITY_NONE,
                     stopbits=serial.STOPBITS_ONE,
@@ -842,10 +858,10 @@ def test_pk_static(teensy_port, aux_port, num_iterations, vtest_vec, vfsr=3.3,
                     bytesize=serial.EIGHTBITS,
                     timeout=10)
 
-	# Discretization of the Teensy PWM
+	# Discretization of the uC PWM
 	vlsb = vfsr / (2**precision)
 
-	# Take num_iterations readings from the main Teensy
+	# Take num_iterations readings from the main uC
 	vtest_vout_dict = dict()
 	vtest_real_dict = dict()
 	for vtest in vtest_vec:
@@ -853,7 +869,7 @@ def test_pk_static(teensy_port, aux_port, num_iterations, vtest_vec, vfsr=3.3,
 		vtest_code = int(round(vtest/vlsb))
 		vtest_real = vtest_code * vlsb
 
-		# Trigger the auxiliary Teensy to get the ramp to
+		# Trigger the auxiliary uC to get the ramp to
 		# the target voltage
 		aux_ser.write(b'peakslow\n')
 		aux_ser.write(str(vtest_code).encode())
@@ -889,9 +905,9 @@ def test_dac(com_port, num_iterations, code_vec, dac_name, vfsr=3.3,
 		num_bits: Collection of bits.
 		dac_name: Indicates which DAC is being tested, e.g. spani_globals.OUT_DAC_MAIN,
 			OUT_DAC_SMALL, OUT_VDD_MAIN, OUT_VDD_AON
-		vfsr: Float. Voltage full scale range of the Teensy analogRead.
-		precision: Integer. Number of bits used by Teensy in analogRead. Note
-			that this is set in the Teensy code, so this should be adjusted 
+		vfsr: Float. Voltage full scale range of the uC analogRead.
+		precision: Integer. Number of bits used by uC in analogRead. Note
+			that this is set in the uC code, so this should be adjusted 
 			in the Python to match.
 	Returns:
 		code_data_dict: Mapping with key:value of digital code:collection of 
@@ -903,8 +919,8 @@ def test_dac(com_port, num_iterations, code_vec, dac_name, vfsr=3.3,
 			number of bits permitted.
 	Notes:
 		TODO GPIB for digital multimeter is wonky, hence the commented-out
-			bits. Instead, it uses Teensy's analogRead.
-		analogRead precision is set in the Teensy code, so the value of
+			bits. Instead, it uses uC's analogRead.
+		analogRead precision is set in the uC code, so the value of
 			"precision" should be adjusted as necessary.
 	'''
 	code_data_dict = {code:[] for code in code_vec}
@@ -915,7 +931,7 @@ def test_dac(com_port, num_iterations, code_vec, dac_name, vfsr=3.3,
 	assert max(code_vec) < code_max, f'Code {max(code_vec)} exceeds allowable' \
 		+ f'max {code_max}'
 
-	# Open Teensy serial connection
+	# Open uC serial connection
 	uC_ser = serial.Serial(port=com_port,
                     baudrate=19200,
                     parity=serial.PARITY_NONE,
@@ -997,8 +1013,8 @@ def get_vref_atten_target(com_port, num_iterations, vfsr=3.3, precision=16):
 	Inputs:
 		com_port: String. Name of the COM port to connect to.
 		num_iterations: Integer. Number of times to measure a single code.
-		precision: Integer. Number of bits used by Teensy in analogRead. Note
-			that this is set in the Teensy code, so this should be adjusted 
+		precision: Integer. Number of bits used by uC in analogRead. Note
+			that this is set in the uC code, so this should be adjusted 
 			in the Python to match.
 	Returns:
 		vout: Float. The target voltage for the attenuator, measured from the unloaded
@@ -1007,7 +1023,7 @@ def get_vref_atten_target(com_port, num_iterations, vfsr=3.3, precision=16):
 	Notes:
 		This assumes that your scan chain has been set appropriately already.
 	'''
-	# Open serial connection to Teensy
+	# Open serial connection to uC
 	uC_ser = serial.Serial(port=com_port,
                     baudrate=19200,
                     parity=serial.PARITY_NONE,
@@ -1046,9 +1062,9 @@ def get_dac_code(com_port, num_iterations, vdac_target, dac_name, vfsr=3.3,
 		num_bits: Collection of bits.
 		dac_name: Indicates which DAC is being tested, e.g. spani_globals.OUT_DAC_MAIN,
 			OUT_DAC_SMALL, OUT_VDD_MAIN, OUT_VDD_AON
-		vfsr: Float. Voltage full scale range of the Teensy analogRead.
-		precision: Integer. Number of bits used by Teensy in analogRead. Note
-			that this is set in the Teensy code, so this should be adjusted 
+		vfsr: Float. Voltage full scale range of the uC analogRead.
+		precision: Integer. Number of bits used by uC in analogRead. Note
+			that this is set in the uC code, so this should be adjusted 
 			in the Python to match.
 	Returns:
 		result: The code most closely associated with the target voltage.
@@ -1059,9 +1075,9 @@ def get_dac_code(com_port, num_iterations, vdac_target, dac_name, vfsr=3.3,
 		Performs a linear search of DAC code to find which one most 
 			closely matches the target voltage. This does not assume
 			that the DAC is monotonic.
-		analogRead precision is set in the Teensy code, so the value of
+		analogRead precision is set in the uC code, so the value of
 			"precision" should be adjusted here to match whatever the
-			Teensy has.
+			uC has.
 	'''
 	# Sweep through the DAC codes (doesn't assume monotonicity)
 	num_bits = spani_globals.N_BITS_MAP[dac_name]
@@ -1115,7 +1131,7 @@ def temp_meas(tmp_port="", chamber_port="",
 	iterations=100, delay=1):
 	'''
 	Inputs:
-        tmp_port: String. TMP102 Teensy COM port. Empty string if not used.
+        tmp_port: String. TMP102 uC COM port. Empty string if not used.
         chamber_port: String. Temperature chamber COM port. Empty string if not 
             used.
         iterations: Integer. Number of measurements to take. Note that
@@ -1123,7 +1139,7 @@ def temp_meas(tmp_port="", chamber_port="",
         delay: Float. Number of seconds to pause between readings.
     Returns:
         teensy_vec: List of floats. Internal temperature readings (C) from
-            the Teensy. Contains "iterations" elements.
+            the uC. Contains "iterations" elements.
         tmp_vec: List of floats. Temperature readings (C) from the 
             ground truth TMP102 temperature sensor. Contains "iterations"
             elements if used, 0 otherwise.
@@ -1132,9 +1148,9 @@ def temp_meas(tmp_port="", chamber_port="",
             0 otherwise.
     Notes:
     	To use the TMP102, we use the Sparkfun TMP102 breakout board connected
-    		to a Teensy using I2C. The Teensy is programmed using
+    		to a uC using I2C. The uC is programmed using
     		temp_sensor.ino (in this repo).
-    	The internal temperature is taken from the Teensy attached to the 
+    	The internal temperature is taken from the uC attached to the 
     		TMP102.
     	The temperature chamber is a TestEquity Model 107 using RS-232
     		for communication.
@@ -1165,7 +1181,7 @@ def temp_meas(tmp_port="", chamber_port="",
     # Sanity checking print statements
 	disp_lst = []
 	if use_TMP102:
-		disp_lst.append('Teensy')
+		disp_lst.append('uC')
 		disp_lst.append('TMP102')
 	if use_chamber:
 		disp_lst.append('Chamber')
@@ -1173,7 +1189,7 @@ def temp_meas(tmp_port="", chamber_port="",
 
 	for i in range(iterations):
 		if use_TMP102:
-			# Read Teensy internal temp
+			# Read uC internal temp
 			tmp_ser.write(b'tempinternal\n')
 			teensy_val = float(tmp_ser.readline())
 
