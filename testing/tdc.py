@@ -226,15 +226,18 @@ def is_started(int_status):
 	int_bit_shifted = int_status & (1<<3)
 	return int_bit_shifted != 0
 
-def tdc_read(teensy_ser, reg, chain='small') -> int:
+def tdc_read(uC_ser, reg, chain, is_single=True, channel=0) -> int:
 	'''
 	Inputs:
-		teensy_ser: serial.Serial. Open COM port to the Teensy.
+		uC_ser: serial.Serial. Open COM port to the uC.
 		reg: String. The name of the register to be read,
 			as per the TDC7200 documentation (e.g. CONFIG1, TIME2).
 			You can also refer to reg_size_map keys to see the register
 			names.
-		chain: String "small" or "full". Which TDC to read from.
+		chain: spani_globals.CHAIN_<name>.
+		is_single: Boolean. True if you're reading from the single-chip
+			TDC, otherwise you're reading from the dual.
+		channel: 0 or 1. Which chip on the board you're reading from.
 	Returns:
 		Integer. The value read out from the TDC register.
 	Notes:
@@ -242,15 +245,15 @@ def tdc_read(teensy_ser, reg, chain='small') -> int:
 	int_cmd, _ = construct_config(is_read=True,
 		addr=int(reg_addr_map[reg], 16))
 	# print(f'--- Reading {reg}')
-	teensy_msg = b'tdcsmallread\n' if chain=='small' else b'tdcmainread\n'
-	teensy_ser.write(teensy_msg)
-	teensy_ser.write(int_cmd.to_bytes(1, 'big'))
+	uC_msg = f"tdcread{chain}{'single' if is_single else 'dual'}{channel}\n"
+	uC_ser.write(uC_msg.encode())
+	uC_ser.write(int_cmd.to_bytes(1, 'big'))
 	for _ in range(4):
-		teensy_ser.readline()
-		# print(teensy_ser.readline())
+		uC_ser.readline()
+		# print(uC_ser.readline())
 
 	val_reg = 0
-	val_bytes = teensy_ser.readline().strip()
+	val_bytes = uC_ser.readline().strip()
 	# print(val_bytes)
 
 	return int(val_bytes)
