@@ -385,7 +385,7 @@ void loop() {
     else if (inputString == "tdcresetsmalldual\n") {
       tdc_reset(pin_tdc_small_dual_en);
     }
-    else if (inputString == "tdclatchreset\n") {
+    else if (inputString == "latchreset\n") {
       tdc_reset(pin_latch_rstb);
     }
 
