@@ -34,7 +34,7 @@ def sanity_dg535_pulse(uC_port, num_iterations, asc_params, asc_kwargs, dg535_kw
 
 	# Program the chip
 	asc = scan.construct_ASC(**asc_params)
-	# scan.program_scan(ser=uC_ser, ASC=asc, **asc_kwargs)
+	scan.program_scan(ser=uC_ser, ASC=asc, **asc_kwargs)
 
 	# Configure the DG535
 	cmd_lst = [
@@ -53,10 +53,216 @@ def sanity_dg535_pulse(uC_port, num_iterations, asc_params, asc_kwargs, dg535_kw
 	# Trigger the DG535 repeatedly, watch the output
 	for _ in range(num_iterations):
 		# Reset the latched signals
-		uC_ser.write(b'tdclatchreset\n')
+		uC_ser.write(b'latchreset\n')
 		dg535.write("SS")
 
 	return
+
+def test_tdiff_single(uC_port, chain, num_iterations, asc_params, 
+	ip_addr, gpib_addr=15, channel=spani_globals.CHANNEL_0, num_filler=0,
+	vin_bias=0.7, vin_amp=0.6, tpulse=1e-9, tref_clk=1/15e6):
+	'''
+	Measures the time between the input DG535 pulse and the output pulse.
+	Inputs:
+		uC_port: String. Name of the COM port the main board uC is 
+			connected to.
+		chain: spani_globals.CHAIN_<name>. The signal chain on the chip
+			that's being tested.
+		num_iterations: Integer. Number of times to measure for a single
+			amplitude.
+		asc_params: Dictionary of collections of integers, used in
+			programming the scan chain. See scan.construct_asc.
+		ip_addr: String. The IP address of the Prologix hooked up
+			to the DG535.
+		gpib_addr: Integer. The GPIB address associated with the DG535.
+		channel: spani_globals.CHANNEL_x. Which channel on the 
+			board is being tested.
+		num_filler: Nonnegative integer. Number of extra filler 
+			read/writes to feed through the serial prior to programming scan.
+		vin_bias: Float. Input bias in V for the input pulse.
+		vin_amp: Float. Pulse amplitude in V for the signal shaping.
+		tpulse: Float. Pulse width to be fed into the chip. Note that
+			for the main signal chain, this is often AC coupled into
+			the board to get a current so all that really matters
+			is the speed of the falling edge.
+		tref_clk: Float. Period in seconds of the TDC reference clock.
+	Returns:
+		tdiff_vec: Collection of floats. The time difference (in seconds) 
+			between the input DG535 pulse and output pulse.
+	'''
+	# Open connections to uC and DG535
+	uC_ser = serial.Serial(port=uC_port,
+                    baudrate=19200,
+                    parity=serial.PARITY_NONE,
+                    stopbits=serial.STOPBITS_ONE,
+                    bytesize=serial.EIGHTBITS,
+                    timeout=5)
+
+	rm = pyvisa.ResourceManager()
+	dg535 = DG535(rm)
+	dg535.open_prologix(ip_addr=ip_addr, gpib_addr=gpib_addr)
+
+	# Sanity checking DG535 status
+	dg535.write("CL")
+	print(f"Error Status: {dg535.query('ES')}")
+	print(f"Instrument Status: {dg535.query('IS')}")
+
+	# TDC settings for measurement
+	wdata1_dict = dict(
+		force_cal=1,	# Get calibration
+		parity_en=1,	# Enable parity bit in measurements
+		trigg_edge=0, 	# Rising edge
+		stop_edge=0, 	# Rising edge
+		start_edge=0,	# Rising edge
+		meas_mode=0,	# Somewhat deceptively assigned to Mode 2...
+		start_meas=1)	# Arm TDC for measurement
+	wdata1 = tdc.construct_wdata1(**wdata1_dict)
+
+	cmd_cfg1, _ = tdc.construct_config(is_read=False, 
+		addr=int(tdc.reg_addr_map['CONFIG1'], 16),
+		wdata=wdata1)
+	
+	wdata2_dict = dict(
+		calibration2_periods=1,	# -> 10 cycles wrt reference
+		avg_cycles=0,			# No averaging
+		num_stop=0 if wdata1_dict['meas_mode']==0 else 1)	# Single timer measurement
+	wdata2 = tdc.construct_wdata2(**wdata2_dict)
+
+	cmd_cfg2, _ = tdc.construct_config(is_read=False,
+		addr=int(tdc.reg_addr_map['CONFIG2'], 16),
+		wdata=wdata2)
+
+	# DG535 settings for measurement
+	# - Channel T0 comes roughly 85ns after trigger is received
+	# - Channel A is set to 1ns after T0
+	# - Channel B is set to tpulse after A so AB gives a tpulse-wide pulse
+	# - Channel AB will be the input to the chip; T0 = START pulse to TDC
+	cmd_lst = [
+		"TM 2",						# Single shot trigger
+		"TZ 1,0",					# T0 termination 50Ohm
+		"OM 1,3",					# T0 output VARiable
+		"OO 1,0",					# T0 offset = 0V
+		"OA 1,3.3",					# T0 amplitude = 3.3V (for the TDC)
+		"DT 2,1,1e-9",				# A = T0 + 1ns
+		f"DT 3,2,{tpulse}",			# B = A + tpulse
+		"TZ 4,0",					# AB/-AB termination 50Ohm
+		"OM 4,3",					# AB/-AB output VARiable
+		f"OO 4,{vin_bias}",			# AB/-AB offset = vin_bias
+		f"OA 4,{vin_amp}",			# AB/-AB amplitude = vin_amp
+	]
+
+	# Program the chip
+	asc = scan.construct_ASC(**asc_params)
+	scan.program_scan(ser=uC_ser, ASC=asc, channel=channel, num_filler=num_filler)
+
+	# Control the DG535
+	for cmd in cmd_lst:
+		dg535.write(cmd)
+
+	tdiff_vec = []
+
+	for _ in range(num_iterations):
+		# Reset the TDC
+		# print('Resetting TDC')
+		str_reset = f"tdcreset{chain}single{channel}\n"
+		uC_ser.write(str_reset.encode())
+		# print(uC_ser.readline())
+		uC_ser.readline()
+
+		val_int_status = tdc.tdc_read(uC_ser=uC_ser,
+			reg="INT_STATUS", chain=chain,
+			is_single=True, channel=channel)
+		has_started = tdc.is_started(val_int_status)
+		has_finished = tdc.is_done(val_int_status)
+		has_ovfl_clk = tdc.is_overflow_clk(val_int_status)
+		has_ovfl_coarse = tdc.is_overflow_coarse(val_int_status)
+
+		# Sanity checking with some visibility
+		# print(f'\t Measurement Started: {has_started}')
+		# print(f'\t Measurement Done: {has_finished}')
+		# print(f'\t Clock Overflow: {has_ovfl_clk}')
+		# print(f'\t Coarse Overflow: {has_ovfl_coarse}')
+		# print(f'-> {val_int_status}')
+
+		assert not has_started, "Measurement shouldn't have started yet"
+
+		# Configure the TDC
+		# print('--- Configuring CONFIG1')
+		uC_ser.write((f"tdcconfig{chain}single{channel}\n").encode())
+		uC_ser.write(cmd_cfg1.to_bytes(1, 'big'))
+		uC_ser.write(wdata1.to_bytes(1, 'big'))
+		for _ in range(5):
+			uC_ser.readline()
+			# print(uC_ser.readline())
+
+		# print('--- Configuring CONFIG2')
+		uC_ser.write((f"tdcconfig{chain}single{channel}\n"))
+		uC_ser.write(cmd_cfg2.to_bytes(1, 'big'))
+		uC_ser.write(wdata2.to_bytes(1, 'big'))
+		for _ in range(5):
+			uC_ser.readline()
+			# print(uC_ser.readline())
+
+		# Feed in the start pulse to get things going
+		# print('--- Feeding START')
+		dg535.write("SS")
+		uC_ser.readline()
+		# print(uC_ser.readline())
+
+		# Wait until measurement done
+		has_finished = False
+		while not has_finished:
+			val_int_status = tdc.tdc_read(uC_ser=uC_ser,
+				reg="INT_STATUS", chain=chain, 
+				is_single=True, channel=channel)
+			has_started = tdc.is_started(val_int_status)
+			has_finished = tdc.is_done(val_int_status)
+			has_ovfl_clk = tdc.is_overflow_clk(val_int_status)
+			has_ovfl_coarse = tdc.is_overflow_coarse(val_int_status)
+
+			# Sanity checking with some visibility
+			# print(f'\t Measurement Started: {has_started}')
+			# print(f'\t Measurement Done: {has_finished}')
+			# print(f'\t Clock Overflow: {has_ovfl_clk}')
+			# print(f'\t Coarse Overflow: {has_ovfl_coarse}')
+			# print(f'-> {val_int_status}')
+
+			assert has_started, "Measurement not properly initialized"
+
+		# Read from relevant data registers
+		num_timers = tdc.code_numstop_map[wdata2_dict['num_stop']]
+		reg_lst = ['CALIBRATION1', 'CALIBRATION2']
+		reg_lst = reg_lst + [f'TIME{i}' for i in range(1,num_timers+1)]
+		reg_lst = reg_lst + [f'CLOCK_COUNT{i}' for i in range(1,num_timers+1)]
+
+		reg_data_dict = dict()
+		for reg in reg_lst:
+			reg_data_dict[reg] = tdc.tdc_read(uC_ser=uC_ser,
+				reg=reg, chain=chain,
+				is_single=True, channel=channel)
+			# print(f'-> {reg_data_dict[reg]}')
+
+		# From registers, calculate the time between the START and STOP triggers
+		time_x_reg = 'TIME1' if wdata1_dict['meas_mode'] == 0 else 'TIME2'
+
+		tdiff = tdc.calc_tof(
+			cal1=reg_data_dict['CALIBRATION1'] % (1<<23),
+			cal2=reg_data_dict['CALIBRATION2'] % (1<<23),
+			cal2_periods=tdc.code_cal2_map[wdata2_dict['calibration2_periods']],
+			time_1=reg_data_dict['TIME1'] % (1<<23),
+			time_x=reg_data_dict[time_x_reg] % (1<<23),
+			count_n=reg_data_dict['CLOCK_COUNT1'] % (1<<16),
+			tper=tref_clk,
+			mode=wdata1_dict['meas_mode'])
+
+		print(f'\t\t {tdiff}')
+		tdiff_vec.append(tdiff)
+
+	# Close connections
+	uC_ser.close()
+	dg535.close_prologix()
+
+	return tdiff_vec
 
 
 def test_tdiff_main(uC_port, num_iterations, asc_params,
@@ -136,15 +342,16 @@ def test_tdiff_main(uC_port, num_iterations, asc_params,
 	# DG535 settings for measurement
 	# - Channel T0 comes roughly 85ns after TRIG is received
 	cmd_lst = [
-		"TM 1",						# External trigger
-		"TS 1",						# Rising edge trigger
-		"TL 1.00",					# Edge trigger level
-		"TZ 0,1",					# Trigger is high impedance
-		# "TZ 1,1",					# T0 termination HiZ
+		"TM 2",						# Single shot trigger
 		"TZ 1,0",					# T0 termination 50Ohm
 		"OM 1,3",					# T0 output VARiable
-		f"OA 1,{vin_amp}",			# T0 channel amplitude
-		f"OO 1,{vin_bias}",			# T0 channel offset
+		"OO 1,0",					# T0 offset = 0V
+		"OA 1,3.3",					# T0 amplitude = 3.3V (for the TDC)
+		"DT 2,1,10e-9",				# A = T0 + 10ns
+		"TZ 2,0",					# A termination 50Ohm
+		"OM 2,3",					# A output VARiable
+		f"OO 2,{vin_bias}",			# A offset = vin_bias
+		f"OA 2,{vin_amp}",			# A amplitude = vin_amp
 	]
 
 	# Program the chip
@@ -160,9 +367,9 @@ def test_tdiff_main(uC_port, num_iterations, asc_params,
 	for _ in range(num_iterations):
 		# Reset the TDC
 		# print('Resetting TDC')
-		uC_ser.write(b'tdcmainreset\n')
-		# print(uC_ser.readline())
+		uC_ser.write(b'latchreset\n')
 		uC_ser.readline()
+		# print(uC_ser.readline())
 
 		val_int_status = tdc.tdc_read(uC_ser=uC_ser,
 			reg="INT_STATUS", chain="main")
