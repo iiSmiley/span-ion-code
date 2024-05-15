@@ -156,7 +156,7 @@ def construct_wdata2(calibration2_periods, avg_cycles, num_stop) -> int:
 		7."
 	assert num_stop in range(8), f"NUM_STOP {num_stop} must be 0 through 7."
 
-	return (num_stop) + (avg_cycles << 3) + (calibration2_periods >> 6)
+	return (num_stop) + (avg_cycles << 3) + (calibration2_periods << 6)
 
 def construct_config(is_read=True, addr=0, wdata=0) -> int:
 	'''
@@ -226,7 +226,7 @@ def is_started(int_status):
 	int_bit_shifted = int_status & (1<<3)
 	return int_bit_shifted != 0
 
-def tdc_read(teensy_ser, reg, chain='small') -> int:
+def tdc_read(teensy_ser, reg, config='single', chain='main', channel='0') -> int:
 	'''
 	Inputs:
 		teensy_ser: serial.Serial. Open COM port to the Teensy.
@@ -242,7 +242,7 @@ def tdc_read(teensy_ser, reg, chain='small') -> int:
 	int_cmd, _ = construct_config(is_read=True,
 		addr=int(reg_addr_map[reg], 16))
 	# print(f'--- Reading {reg}')
-	teensy_msg = b'tdcsmallread\n' if chain=='small' else b'tdcmainread\n'
+	teensy_msg = ('tdcread'+chain+config+channel+'\n').encode('UTF-8')
 	teensy_ser.write(teensy_msg)
 	teensy_ser.write(int_cmd.to_bytes(1, 'big'))
 	for _ in range(4):
@@ -277,12 +277,24 @@ def calc_tof(cal1, cal2, cal2_periods, time_1, time_x, count_n, tper, mode=2):
 		(https://www.ti.com/lit/ds/symlink/tdc7200.pdf). See sections
 		"Calculating Time-of-Flight"
 	'''
+	# print("Cal1: ", cal1)
+	# print("Cal2: ", cal2)
+	# print("Cal2 Period: ", cal2_periods)
+
 	cal_count = (cal2 - cal1)/(cal2_periods-1)
+
+	# print(cal_count)
 
 	if cal_count == 0:
 		return float('nan')
 	
 	norm_lsb = tper/cal_count
+
+	# print("NormLSB: ", norm_lsb)
+	# print("Time_1: ", time_1)
+	# print("Time_x: ", time_x)
+	# print("Count_n: ", count_n)
+
 	if mode == 0:
 		return time_x * norm_lsb
 	elif mode == 1:

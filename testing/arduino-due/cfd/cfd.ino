@@ -210,6 +210,8 @@ void setup() {
   pinMode(pin_clk_ref, OUTPUT);
   analogWrite(pin_clk_ref, 1<<(B_ADC-1));
   // analogWriteFrequency(pin_clk_ref, 16000000);
+  // Note1: The TDC reference clock is sourced from a generator
+  // Note2: Clock frequency must be 84 MHz / N, N=1,2,3,...
 } // end setup()
 
 void loop() {
@@ -385,6 +387,8 @@ void loop() {
     else if (inputString == "tdcresetsmalldual\n") {
       tdc_reset(pin_tdc_small_dual_en);
     }
+
+    // TDC Latch Reset
     else if (inputString == "tdclatchreset\n") {
       tdc_reset(pin_latch_rstb);
     }

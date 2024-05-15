@@ -246,7 +246,8 @@ def test_tdiff_main(teensy_port, num_iterations, asc_params,
 
 
 def test_fflvl_jitter(teensy_port, num_iterations, twait=250e-9,
-		ip_addr='192.168.1.4', gpib_addr=15, tref_clk=1/15e6):
+		ip_addr='192.168.1.108', gpib_addr=15, tref_clk=1/15e6, config='single',
+		chain='main', channel='1'):
 	'''
 	Measures the time between the input DG535 pulse and the output pulse 
 	that comes from the board-level components. This is intended 
@@ -281,14 +282,14 @@ def test_fflvl_jitter(teensy_port, num_iterations, twait=250e-9,
                     bytesize=serial.EIGHTBITS,
                     timeout=5)
 
-	rm = pyvisa.ResourceManager()
-	dg535 = DG535(rm)
-	dg535.open_prologix(ip_addr=ip_addr, gpib_addr=gpib_addr)
+	# rm = pyvisa.ResourceManager()
+	# dg535 = DG535(rm)
+	# dg535.open_prologix(ip_addr=ip_addr, gpib_addr=gpib_addr)
 
 	# Sanity checking DG535 status
-	dg535.write("CL")
-	print(f"Error Status: {dg535.query('ES')}")
-	print(f"Instrument Status: {dg535.query('IS')}")
+	# dg535.write("CL")
+	# print(f"Error Status: {dg535.query('ES')}")
+	# print(f"Instrument Status: {dg535.query('IS')}")
 
 	# TDC settings for measurement
 	wdata1_dict = dict(
@@ -334,10 +335,14 @@ def test_fflvl_jitter(teensy_port, num_iterations, twait=250e-9,
 	]
 
 	# Control the DG535
-	for cmd in cmd_lst:
-		dg535.write(cmd)
+	# for cmd in cmd_lst:
+	#	 dg535.write(cmd)
 
 	tdiff_vec = []
+
+	tdc_reset_cmd = ('tdcreset'+chain+config+channel+'\n').encode('UTF-8')
+	tdc_config_cmd = ('tdcconfig'+chain+config+channel+'\n').encode('UTF-8')
+	tdc_read_cmd = ('tdcread'+chain+config+channel+'\n').encode('UTF-8')
 
 	for _ in range(num_iterations):
 		# Reset the TDC until it actually resets
@@ -345,11 +350,14 @@ def test_fflvl_jitter(teensy_port, num_iterations, twait=250e-9,
 		count = 0
 		while has_started and count < 10:
 			print('Resetting TDC')
-			uC_ser.write(b'tdcsmallreset\n')
+			uC_ser.write(tdc_reset_cmd)
 			print(uC_ser.readline())
 
-			val_int_status = tdc.tdc_read(uC_ser=uC_ser,
-				reg="INT_STATUS", chain="small")
+			val_int_status = tdc.tdc_read(teensy_ser=uC_ser,
+				reg="INT_STATUS", 
+				chain=chain, 
+				config=config, 
+				channel=channel)
 			has_started = tdc.is_started(val_int_status)
 			has_finished = tdc.is_done(val_int_status)
 			has_ovfl_clk = tdc.is_overflow_clk(val_int_status)
@@ -369,36 +377,50 @@ def test_fflvl_jitter(teensy_port, num_iterations, twait=250e-9,
 
 		# Configure the TDC
 		print('--- Configuring CONFIG1')
-		uC_ser.write(b'tdcsmallconfig\n')
+		uC_ser.write(tdc_config_cmd)
 		uC_ser.write(cmd_cfg1.to_bytes(1, 'big'))
 		uC_ser.write(wdata1.to_bytes(1, 'big'))
 		for _ in range(5):
 			print(uC_ser.readline())
 
 		print('--- Configuring CONFIG2')
-		uC_ser.write(b'tdcsmallconfig\n')
+		uC_ser.write(tdc_config_cmd)
 		uC_ser.write(cmd_cfg2.to_bytes(1, 'big'))
 		uC_ser.write(wdata2.to_bytes(1, 'big'))
 		for _ in range(5):
 			print(uC_ser.readline())
 
 		# Feed in the start pulse to get things going - may need more than once
-		count = 0
-		while not has_started and count < 10:
-			print('--- Feeding START')
-			uC_ser.write(b'tdcsmallstart\n')
-			print(uC_ser.readline())
+		# count = 0
+		# while not has_started and count < 10:
+		# 	# print('--- Feeding START')
+		# 	# uC_ser.write(b'tdcsmallstart\n')
+		# 	# print(uC_ser.readline())
 
-			val_int_status = tdc.tdc_read(uC_ser=uC_ser,
-				reg="INT_STATUS", chain="small")
-			has_started = tdc.is_started(val_int_status)
-			count = count + 1
+		# 	val_int_status = tdc.tdc_read(uC_ser=uC_ser,
+		# 		reg="INT_STATUS", chain="small")
+		# 	has_started = tdc.is_started(val_int_status)
+		# 	count = count + 1
+
+		while not has_started:
+			cont = input('EXC? (y/n) ').lower()
+			if cont == 'y':
+				val_int_status = tdc.tdc_read(teensy_ser=uC_ser,
+					reg="INT_STATUS", 
+					config=config, 
+					chain=chain, 
+					channel=channel)
+				has_started = tdc.is_started(val_int_status)
+				print("Started: ", has_started)
 
 		# Wait until measurement done
 		has_finished = False
 		while not has_finished:
-			val_int_status = tdc.tdc_read(uC_ser=uC_ser,
-				reg="INT_STATUS", chain="small")
+			val_int_status = tdc.tdc_read(teensy_ser=uC_ser,
+				reg="INT_STATUS", 
+				config=config,
+				chain=chain, 
+				channel=channel)
 			has_started = tdc.is_started(val_int_status)
 			has_finished = tdc.is_done(val_int_status)
 			has_ovfl_clk = tdc.is_overflow_clk(val_int_status)
@@ -421,8 +443,11 @@ def test_fflvl_jitter(teensy_port, num_iterations, twait=250e-9,
 
 		reg_data_dict = dict()
 		for reg in reg_lst:
-			reg_data_dict[reg] = tdc.tdc_read(uC_ser=uC_ser,
-				reg=reg, chain="small")
+			reg_data_dict[reg] = tdc.tdc_read(teensy_ser=uC_ser,
+				reg=reg, 
+				config=config, 
+				chain=chain, 
+				channel=channel)
 			print(f'-> {reg_data_dict[reg]}')
 
 		# From registers, calculate the time between the START and STOP triggers
@@ -441,14 +466,15 @@ def test_fflvl_jitter(teensy_port, num_iterations, twait=250e-9,
 
 	# Close connections
 	uC_ser.close()
-	dg535.close_prologix()
+	# dg535.close_prologix()
 
 	return tdiff_vec
 
 
 def test_tdiff_small(teensy_port, num_iterations, asc_params,
-	 	ip_addr='192.168.4.1', gpib_addr=15, 
-		vin_bias=0.7, vin_amp=0.6, tref_clk=1/15e6):
+	 	ip_addr='192.168.4.108', gpib_addr=15, 
+		vin_bias=0.7, vin_amp=0.6, tref_clk=1e-7,
+		config='single', channel='0'):
 	'''
 	Measures the time between the input DG535 pulse and the output pulse.
 	Inputs:
@@ -468,6 +494,14 @@ def test_tdiff_small(teensy_port, num_iterations, asc_params,
 		vin_bias: Float. Input bias in V for the input pulse.
 		vin_amp: Float. Pulse amplitude in V for the signal shaping.
 		tref_clk: Float. Period in seconds of the TDC reference clock.
+		config:	String. Can be either: 
+			'single' to test one chip by itself
+				i.e. START from DG535 and STOP from CFD
+			'dual' to test the entire system
+				i.e. START from CFD and STOP from CFD
+		channel: Char. The chip to communicate with on the evaluation board.
+			For single configuration, channel is either '0' or '1'.
+			For dual configuration, channel is an empty string ''
 	Returns:
 		tdiff_vec: Collection of floats. The time difference (in seconds) 
 			between the input DG535 pulse and output pulse.
@@ -482,14 +516,14 @@ def test_tdiff_small(teensy_port, num_iterations, asc_params,
                     bytesize=serial.EIGHTBITS,
                     timeout=5)
 
-	rm = pyvisa.ResourceManager()
-	dg535 = DG535(rm)
-	dg535.open_prologix(ip_addr=ip_addr, gpib_addr=gpib_addr)
+	# rm = pyvisa.ResourceManager()
+	# dg535 = DG535(rm)
+	# dg535.open_prologix(ip_addr=ip_addr, gpib_addr=gpib_addr)
 
 	# Sanity checking DG535 status
-	dg535.write("CL")
-	print(f"Error Status: {dg535.query('ES')}")
-	print(f"Instrument Status: {dg535.query('IS')}")
+	# dg535.write("CL")
+	# print(f"Error Status: {dg535.query('ES')}")
+	# print(f"Instrument Status: {dg535.query('IS')}")
 
 	# TDC settings for measurement
 	wdata1_dict = dict(
@@ -533,23 +567,35 @@ def test_tdiff_small(teensy_port, num_iterations, asc_params,
 
 	# Program the chip
 	asc = scan.construct_ASC(**asc_params)
-	scan.program_scan(ser=uC_ser, ASC=asc)
+	scan.program_scan(ser=uC_ser,
+		ASC=asc,
+		num_filler=1,
+		channel=1)
 
 	# Control the DG535
-	for cmd in cmd_lst:
-		dg535.write(cmd)
+	# for cmd in cmd_lst:
+	# 	dg535.write(cmd)
 
 	tdiff_vec = []
+	tdc_reset_cmd = ('tdcreset'+'main'+config+channel+'\n').encode('UTF-8')
+	tdc_config_cmd = ('tdcconfig'+'main'+config+channel+'\n').encode('UTF-8')
+	tdc_read_cmd = ('tdcread'+'main'+config+channel+'\n').encode('UTF-8')
 
 	for _ in range(num_iterations):
+		# Reset the TDC Latch
+		uC_ser.write(b'tdclatchreset\n')
+		uC_ser.readline()
 		# Reset the TDC
 		# print('Resetting TDC')
-		uC_ser.write(b'tdcsmallreset\n')
+		uC_ser.write(tdc_reset_cmd)
 		# print(uC_ser.readline())
 		uC_ser.readline()
 
-		val_int_status = tdc.tdc_read(uC_ser=uC_ser,
-			reg="INT_STATUS", chain="small")
+		val_int_status = tdc.tdc_read(teensy_ser=uC_ser,
+			reg="INT_STATUS", 
+			config=config, 
+			chain='main', 
+			channel=channel)
 		has_started = tdc.is_started(val_int_status)
 		has_finished = tdc.is_done(val_int_status)
 		has_ovfl_clk = tdc.is_overflow_clk(val_int_status)
@@ -566,7 +612,7 @@ def test_tdiff_small(teensy_port, num_iterations, asc_params,
 
 		# Configure the TDC
 		# print('--- Configuring CONFIG1')
-		uC_ser.write(b'tdcsmallconfig\n')
+		uC_ser.write(tdc_config_cmd)
 		uC_ser.write(cmd_cfg1.to_bytes(1, 'big'))
 		uC_ser.write(wdata1.to_bytes(1, 'big'))
 		for _ in range(5):
@@ -574,7 +620,7 @@ def test_tdiff_small(teensy_port, num_iterations, asc_params,
 			uC_ser.readline()
 
 		# print('--- Configuring CONFIG2')
-		uC_ser.write(b'tdcsmallconfig\n')
+		uC_ser.write(tdc_config_cmd)
 		uC_ser.write(cmd_cfg2.to_bytes(1, 'big'))
 		uC_ser.write(wdata2.to_bytes(1, 'big'))
 		for _ in range(5):
@@ -583,15 +629,38 @@ def test_tdiff_small(teensy_port, num_iterations, asc_params,
 
 		# Feed in the start pulse to get things going
 		# print('--- Feeding START')
-		uC_ser.write(b'tdcsmallstart\n')
+		# uC_ser.write(b'tdcsmallstart\n')
 		# print(uC_ser.readline())
-		uC_ser.readline()
+		# uC_ser.readline()
+
+		while not has_started:
+			cont = input('EXC? (y/n) ').lower()
+			if cont == 'y':
+				val_int_status = tdc.tdc_read(teensy_ser=uC_ser,
+					reg="INT_STATUS", 
+					config=config, 
+					chain='main', 
+					channel=channel)
+				has_started = tdc.is_started(val_int_status)
+				has_finished = tdc.is_done(val_int_status)
+				has_ovfl_clk = tdc.is_overflow_clk(val_int_status)
+				has_ovfl_coarse = tdc.is_overflow_coarse(val_int_status)
+
+				# Sanity checking with some visibility
+				print(f'\t Measurement Started: {has_started}')
+				print(f'\t Measurement Done: {has_finished}')
+				print(f'\t Clock Overflow: {has_ovfl_clk}')
+				print(f'\t Coarse Overflow: {has_ovfl_coarse}')
+				print(f'-> {val_int_status}')
 
 		# Wait until measurement done
 		has_finished = False
 		while not has_finished:
-			val_int_status = tdc.tdc_read(uC_ser=uC_ser,
-				reg="INT_STATUS", chain="small")
+			val_int_status = tdc.tdc_read(teensy_ser=uC_ser,
+				reg="INT_STATUS",
+				config=config, 
+				chain='main', 
+				channel=channel)
 			has_started = tdc.is_started(val_int_status)
 			has_finished = tdc.is_done(val_int_status)
 			has_ovfl_clk = tdc.is_overflow_clk(val_int_status)
@@ -614,8 +683,11 @@ def test_tdiff_small(teensy_port, num_iterations, asc_params,
 
 		reg_data_dict = dict()
 		for reg in reg_lst:
-			reg_data_dict[reg] = tdc.tdc_read(uC_ser=uC_ser,
-				reg=reg, chain="small")
+			reg_data_dict[reg] = tdc.tdc_read(teensy_ser=uC_ser,
+				reg=reg, 
+				config=config, 
+				chain='main', 
+				channel=channel)
 			# print(f'-> {reg_data_dict[reg]}')
 
 		# From registers, calculate the time between the START and STOP triggers
@@ -636,7 +708,7 @@ def test_tdiff_small(teensy_port, num_iterations, asc_params,
 
 	# Close connections
 	uC_ser.close()
-	dg535.close_prologix()
+	# dg535.close_prologix()
 
 	return tdiff_vec
 

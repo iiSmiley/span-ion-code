@@ -147,34 +147,58 @@ def run_main():
 	#####################################################
 	if True:
 		# Connect to DG535
+		print("Connecting...")
+		# Connect to DG535
 		rm = pyvisa.ResourceManager()
 		dg535 = DG535(rm)
-		dg535.open_prologix(ip_addr="192.168.1.102", gpib_addr=15)
+		dg535.open_prologix(ip_addr="192.168.1.108", gpib_addr=15)
+
+		print("Connected!")
 
 		# Various statuses
 		dg535.write("CL")
 		print(f"Error Status: {dg535.query('ES')}")
 		print(f"Instrument Status: {dg535.query('IS')}")
 
+		# cmd_lst = [
+		# 	#"DT 2,1,1e-6", 	# Set the delay of channel A = T0 + 1us
+		# 	"DT 3,2,1e-6", 	# Set the delay of channel B = A + 1us
+		# 	"TZ 4,0",		# Set channel A termination impedance to 50ohm load
+		# 	# "TZ 3,0",		# Set channel B termination impedance to 50ohm load
+		# 	"OM 4,3",		# Channel A output VARiable
+		# 	# "OM 3,3",		# Channel B output VARiable
+		# 	f"OA 4,1",		# Channel A amplitude +1V
+		# 	# "OA 3,0.5",		# Channel B amplitude +0.5V
+		# 	f"OO 4,0.0",		# Channel A offset +0.5V
+		# 	# "OO 3,0.25",	# Channel B offset +0.25V
+		# 	"TM 0",			# Internal rate generator is trigger source
+		# 	"TR 0,10000",	# Internal trigger mode 10kHz
+		# ]
+		print("Sending commands...")
 		cmd_lst = [
-			"DT 2,1,1e-6", 	# Set the delay of channel A = T0 + 1us
-			"DT 3,2,1e-6", 	# Set the delay of channel B = A + 1us
-			"TZ 2,0",		# Set channel A termination impedance to 50ohm load
-			# "TZ 3,0",		# Set channel B termination impedance to 50ohm load
-			"OM 2,3",		# Channel A output VARiable
-			# "OM 3,3",		# Channel B output VARiable
-			"OA 2,1",		# Channel A amplitude +1V
-			# "OA 3,0.5",		# Channel B amplitude +0.5V
-			"OO 2,0.5",		# Channel A offset +0.5V
-			# "OO 3,0.25",	# Channel B offset +0.25V
-			"TM 0",			# Internal rate generator is trigger source
-			"TR 0,10000",	# Internal trigger mode 10kHz
-		]
+			# "CL",
+			#"DT 2,1,0.5E-7;",			# Set channel A delay = T0 + 50  ns
+			"TM 2;DT 3,1,2.0E-7; OM 4,3; OO 4,1.2; OA 4,1.1; TZ 4,1; SS;"
+			#"SS;",
+			#"DT 3,1,2.0E-7;",			# Set channel B delay = T0 + 200 ns
+			# "OM 4,3",					# AB output VARiable
+			# f"OA 4,1.1",				# AB channel amplitude
+			# "OO 4,0",					# AB channel offset
+			# "TZ 4,1",					# Set AB output impedance to High-Z
+			#"TM 0;",						# Set the triiger to be in Single shot mode
+			#"SS",						# Send pulse
+			#"SS",						# Send pulse
+			#"DS Hi Roberto2!;"
+		] 
 
 		for cmd in cmd_lst:
 			dg535.write(cmd)
+			print("Sent: ", cmd)
 
+		print("Closing connection...")
 		dg535.close()
+
+		print("Connection closed!")
 
 if __name__ == "__main__":
 	try:

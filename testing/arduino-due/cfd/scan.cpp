@@ -4,18 +4,22 @@
 #include <Arduino.h>
 
 // Constants
-const int N_SCAN = 207;   // Number of scan bits
+const int N_SCAN = 207;     // Number of scan bits
+const int CLK_PERIOD = 200; // Clock period in micro-second
 
 void atick(int pin_scan_clk) {
 /*
- * 10kHz clock, 50% duty cycle.
+ * 200 us -> 5kHz
+ * 50% duty cycle.
+ * Note:  The other CLK_PERIOD / 4 is included the code body (Line 68).
+ *        It is added there to prevent set-up/hold time violations.
 */
   digitalWrite(pin_scan_clk, LOW);
-  delayMicroseconds(100);
+  delayMicroseconds(CLK_PERIOD / 2);
 
   // Read
   digitalWrite(pin_scan_clk, HIGH);
-  delayMicroseconds(100);
+  delayMicroseconds(CLK_PERIOD / 4);
 } // end atick()
 
 void asc_write(int pin_scan_clk, int pin_scan_inb) {
@@ -38,6 +42,16 @@ void asc_write(int pin_scan_clk, int pin_scan_inb) {
     }
   }
 
+  // Initilize the clock
+  /* Note:  Clocking occurs on rising edges
+   * 
+   * clk: ____|‾‾|__|‾‾|__|‾‾|__|‾‾
+   * din: __|‾‾|__|‾‾|__|‾‾|__|‾‾|_
+   */
+  
+  digitalWrite(pin_scan_clk, HIGH);
+  delayMicroseconds(100);
+
   // Once all bits are received, bitbang to ASC input
   for (int x=0; x<N_SCAN; x++) {
     if (scanbits[x] == '1') {
@@ -49,6 +63,9 @@ void asc_write(int pin_scan_clk, int pin_scan_inb) {
     else {
       Serial.println("Error in ASC write");
     }
+    
+    // To prevent set-up/hold time violations
+    delayMicroseconds(CLK_PERIOD / 4);
 
     // Pulse clock
     atick(pin_scan_clk);

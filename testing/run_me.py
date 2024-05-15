@@ -24,11 +24,11 @@ def run_main():
 	### Program Scan ###
 	####################
 	if False:
-		uC_port = 'COM12'
+		uC_port = 'COM3'
 		asc_params = dict(
 			# MSB -> LSB
 			preamp_res 			=[0]*2,
-			delay_res 			=[0]*2,
+			delay_res 			= [0,0], # [1]*2,
 			watchdog_res		=[0],
 			en_stuck 			=[0],
 			attenuator_sel 		=[0]*3,
@@ -60,33 +60,33 @@ def run_main():
 			ASC=asc,
 			baudrate=19200,
 			num_filler=1,
-			channel=1)
+			channel=0)
 
 	############
 	### DACs ###
 	############
-	if True:
-		which_dac = spani_globals.OUT_DAC_MAIN
+	if False:
+		which_dac = spani_globals.OUT_REF_PREAMP
 		test_dac_params = dict(
-			com_port='COM12',
+			com_port='COM3',
 			num_iterations=100,
-			code_vec=range(0, int(2**spani_globals.N_BITS_MAP[which_dac]), 10),
+			code_vec=range(0, int(2**spani_globals.N_BITS_MAP[which_dac]), 15),
 			dac_name=which_dac,
 			vfsr=3.3,
 			precision=12,
 			# t_wait=.001,
-			channel=1)
+			channel=0)
 
 		dac_data = testing.test_dac(**test_dac_params)
 
 		# Dump the output into a human-readable file
-		file_out = f'../../data/testing/{timestamp_str}_dac{which_dac}_{test_dac_params["num_iterations"]}x.csv'
-		with open(file_out, 'w', newline='') as csvfile:
-			fwriter = csv.writer(csvfile, delimiter=",",
-				quotechar="|", quoting=csv.QUOTE_MINIMAL)
-			fwriter.writerow(['Code']+[f'Iteration {i}' for i in range(1, num_iterations+1)])
-			for code, lsb_vec in dac_data.items():
-				fwriter.writerow([code] + list(lsb_vec))
+		# file_out = f'../../data/testing/{timestamp_str}_dac{which_dac}_{test_dac_params["num_iterations"]}x.csv'
+		# with open(file_out, 'w', newline='') as csvfile:
+		# 	fwriter = csv.writer(csvfile, delimiter=",",
+		# 		quotechar="|", quoting=csv.QUOTE_MINIMAL)
+		# 	fwriter.writerow(['Code']+[f'Iteration {i}' for i in range(1, num_iterations+1)])
+		# 	for code, lsb_vec in dac_data.items():
+		# 		fwriter.writerow([code] + list(lsb_vec))
 
 	###############################
 	### Bandgap in Temp Chamber ###
@@ -211,35 +211,64 @@ def run_main():
 	################################
 	### Small Chain Fast Testing ###
 	################################
-	if False:
+	if True:
 		f_atten = -20 # dB; CHANGE THIS WITH HARDWARE
 
-		asc_params = dict(
-			# MSB -> LSB TODO check that autozero gain...
-			preamp_res 		= [0, 0],
-			delay_res 		= [0, 0],
-			watchdog_res 	= [0, 0, 0, 0],
-			attenuator_sel	= [0, 0, 0],
-			dac_sel 		= [1, 1, 1, 1, 1, 1, 1, 1],
-			az_main_gain 	= [0]*3,
-			az_aux_gain 	= [0]*3,
-			oneshot_res 	= [0, 0],
-			vref_preamp 	= [0, 0, 0, 0, 0, 0, 0, 0], # TODO measure this bad boy
-			vdd_aon			= [0, 0, 0, 0, 0],
-			vdd_signal		= [0, 0, 0, 0, 0],
-			en_main			= [0],
-			en_small		= [1])
+		# asc_params = dict(
+		# 	# MSB -> LSB TODO check that autozero gain...
+		# 	preamp_res 		= [0, 0],
+		# 	delay_res 		= [0, 0],
+		# 	watchdog_res 	= [0, 0, 0, 0],
+		# 	attenuator_sel	= [0, 0, 0],
+		# 	dac_sel 		= [1, 1, 1, 1, 1, 1, 1, 1],
+		# 	az_main_gain 	= [0]*3,
+		# 	az_aux_gain 	= [0]*3,
+		# 	oneshot_res 	= [0, 0],
+		# 	vref_preamp 	= [0, 0, 0, 0, 0, 0, 0, 0], # TODO measure this bad boy
+		# 	vdd_aon			= [0, 0, 0, 0, 0],
+		# 	vdd_signal		= [0, 0, 0, 0, 0],
+		# 	en_main			= [0],
+		# 	en_small		= [1])
 
-		vin_amp_vec = np.arange(0.7, 1.3, 100e-3)
-		# vin_amp_vec = 
+		asc_params = dict(
+			# MSB -> LSB
+			preamp_res 			=[0]*2,
+			delay_res 			=[0,0], # [1]*2,
+			watchdog_res		=[0],
+			en_stuck 			=[0],
+			attenuator_sel 		=[0]*3,
+			dac_sel 			=[0]*8,
+			oneshot_res 		=[0]*2,
+			vref_preamp 		=[0]*8,
+			en_pullup_p_led 	=[0]*7,
+			en_pullup_n_led 	=[0]*7,
+			en_pullup_p_cfd 	=[0]*7,
+			en_pullup_n_cfd 	=[0]*7,
+			en_pulldown_p_led 	=[0]*7,
+			en_pulldown_n_led 	=[0]*7,
+			en_pulldown_p_cfd 	=[0]*7,
+			en_pulldown_n_cfd	=[0]*7,
+			ctrl_pullup_led 	=[0]*28,
+			ctrl_pulldown_led 	=[0]*28,
+			ctrl_pullup_cfd		=[0]*28,
+			ctrl_pulldown_cfd 	=[0]*28,
+			vdd_aon 			=[0]*5,
+			vdd_signal 			=[0]*5,
+			en_main 			=[1],
+			en_small			=[1])
+
+		# vin_amp_vec = np.arange(0.7, 1.3, 100e-3)
+		vin_amp_vec = [0.5]
 		test_tdiff_small_params = dict(
-			teensy_port='COM5',
-			num_iterations=100,
+			teensy_port='COM3',
+			num_iterations=1,
 			asc_params=asc_params,
-			ip_addr='192.168.1.4',
+			ip_addr='192.168.1.108',
 			gpib_addr=15,
 			vin_bias=0.23,
-			tref_clk=1/3.75e6)
+			tref_clk=1/1e7,
+			config='single',
+			channel='1')
 
 		for vin_amp in vin_amp_vec:
 			timestamp = datetime.now()
@@ -255,11 +284,13 @@ def run_main():
 			tdiff_vec = testing.test_tdiff_small(**test_tdiff_small_params)
 			tdiff_vec = [float(tdiff) for tdiff in tdiff_vec]
 
-			dump_data = dict(config=test_tdiff_small_params,
-				f_atten=f_atten,
-				data=tdiff_vec)
-			with open(file_out, 'w') as outfile:
-				yaml.dump(dump_data, outfile, default_flow_style=False)
+			print(tdiff_vec)
+
+			# dump_data = dict(config=test_tdiff_small_params,
+			# 	f_atten=f_atten,
+			# 	data=tdiff_vec)
+			# with open(file_out, 'w') as outfile:
+			# 	yaml.dump(dump_data, outfile, default_flow_style=False)
 
 
 	###############################
@@ -424,20 +455,39 @@ def run_main():
 	if False:
 		test_fflvl_jitter_params = dict(
 			teensy_port='COM3',
-			num_iterations=10000,
-			twait=250e-9,
-			ip_addr='192.168.1.4',
+			num_iterations=1,
+			twait=200e-9,
+			ip_addr='192.168.1.108',
 			gpib_addr=15,
-			tref_clk=1/3.75e6)
- 
-		file_out = f'../../data/testing/{timestamp_str}_{test_fflvl_jitter_params["num_iterations"]}x_boardJitter.yaml'
-		tdiff_vec = testing.test_fflvl_jitter(**test_fflvl_jitter_params)
-		tdiff_vec = [float(tdiff) for tdiff in tdiff_vec]
+			tref_clk=1e-7,
+			chain='small',
+			config='single',
+			channel='1')
 
-		dump_data = dict(config=test_fflvl_jitter_params,
-			data=tdiff_vec)
-		with open(file_out, 'w') as outfile:
-			yaml.dump(dump_data, outfile, default_flow_style=False)
+		chain = test_fflvl_jitter_params['chain']
+		config = test_fflvl_jitter_params['config']
+		channel = test_fflvl_jitter_params['channel']
+		num_iter = test_fflvl_jitter_params['num_iterations']
+		file_name = f'{timestamp_str}_{chain}_{config}{channel}_{num_iter}x_boardJitter' 
+
+		# file_out = f'../../data/testing/{timestamp_str}_{test_fflvl_jitter_params["num_iterations"]}x_boardJitter.yaml'
+		file_out = f'../../data/testing/{file_name}.csv'
+		
+		tdiff_vec = testing.test_fflvl_jitter(**test_fflvl_jitter_params)
+		# tdiff_vec = [float(tdiff) for tdiff in tdiff_vec]
+		tdiff_vec = [[float(tdiff)] for tdiff in tdiff_vec]
+		print(tdiff_vec)
+
+		# dump_data = dict(config=test_fflvl_jitter_params,
+		# 	data=tdiff_vec)
+		# with open(file_out, 'w') as outfile:
+		# 	yaml.dump(dump_data, outfile, default_flow_style=False)
+		# with open(file_out, 'w', newline='') as f:
+		# 	write = csv.writer(f, dialect='excel')
+		# 	write.writerow(['TDOA [s]'])
+		# 	write.writerows(tdiff_vec)
+
+
 
 	##############################################
 	### Scratch: Check Biasing of On-Board OTA ###
@@ -551,45 +601,69 @@ def run_main():
 	### Get the DG535 to Respond ###
 	################################
 	if False:
-		teensy_ser = serial.Serial(port='COM3',
-                    baudrate=19200,
-                    parity=serial.PARITY_NONE,
-                    stopbits=serial.STOPBITS_ONE,
-                    bytesize=serial.EIGHTBITS,
-                    timeout=5)
-
+		# teensy_ser = serial.Serial(port='COM3',
+        #             baudrate=19200,
+        #             parity=serial.PARITY_NONE,
+        #             stopbits=serial.STOPBITS_ONE,
+        #             bytesize=serial.EIGHTBITS,
+        #             timeout=5)
+		print("Establishing connection ...")
 		rm = pyvisa.ResourceManager()
 		dg535 = DG535(rm)
-		dg535.open_prologix(ip_addr='192.168.1.4', gpib_addr=15)
-		cmd_lst = [
-			"CL",						# Clear
-			"TM 1",						# External trigger
-			"TS 1",						# Rising edge trigger
-			"TL 1.00",					# Edge trigger level
-			"TZ 0,1",					# Trigger is high impedance
-			f"DT 2,1,250e-9", 			# Set delay A=T0+twait
-			"TZ 1,1",					# T0 termination HiZ
-			"TZ 2,0",					# A termination 50ohm
-			"OM 1,3",					# T0 output VARiable
-			"OM 2,3",					# A output VARiable
-			f"OA 2,1.8",				# A channel amplitude
-			f"OA 1,3.3",				# T0 channel amplitude
-			f"OO 2,0",					# A channel offset
-			f"OO 1,0",					# T0 channel offset
-		]
+		dg535.open_prologix(ip_addr='192.168.1.108', gpib_addr=15)
 
+		print("Connection Established!")
+
+		# cmd_lst = [
+		# 	"CL",						# Clear
+		# 	"TM 1",						# External trigger
+		# 	"TS 1",						# Rising edge trigger
+		# 	"TL 1.00",					# Edge trigger level
+		# 	"TZ 0,1",					# Trigger is high impedance
+		# 	f"DT 2,1,250e-9", 			# Set delay A=T0+twait
+		# 	"TZ 1,1",					# T0 termination HiZ
+		# 	"TZ 2,0",					# A termination 50ohm
+		# 	"OM 1,3",					# T0 output VARiable
+		# 	"OM 2,3",					# A output VARiable
+		# 	f"OA 2,1.8",				# A channel amplitude
+		# 	f"OA 1,3.3",				# T0 channel amplitude
+		# 	f"OO 2,0",					# A channel offset
+		# 	f"OO 1,0",					# T0 channel offset
+		# ]
+
+		cmd_lst = [
+			# "CL",
+			# #"DT 2,1,0.5E-7;",			# Set channel A delay = T0 + 50  ns
+			# "DT 3,1,2.0E-7",			# Set channel B delay = T0 + 200 ns
+			# "OM 4,3",					# AB output VARiable
+			# "OA 4,1.1",					# AB channel amplitude
+			# "OO 4,0",					# AB channel offset
+			# "TZ 4,1",					# Set AB output impedance to High-Z
+			# "TM 2",						# Set the triiger to be in Single shot mode
+			"DS Hi!",					# Send string
+			# "SS",						# Send pulse
+			# "SS",						# Send pulse
+		] 
+
+		print("Sending commands...")
 		for cmd in cmd_lst:
 			dg535.write(cmd)
+			print("Sent: ", cmd)
+		
+		print("Closing connection...")
+		dg535.close()
+		print("Connection closed!")
 
-		cont = input('Continue? (y/n) ').lower()
-		if cont == 'y':
-			while True:
-				# Repeatedly send the START pulse
-				print('--- Feeding START')
-				teensy_ser.write(b'tdcsmallstart\n')
-				print(teensy_ser.readline())
+		# cont = input('Continue? (y/n) ').lower()
+		# if cont == 'y':
+		# 	while True:
+		# 		# Repeatedly send the START pulse
+		# 		print('--- Feeding START')
+		# 		teensy_ser.write(b'tdcsmallstart\n')
+		# 		print(teensy_ser.readline())
 
 				# See the oscilloscope while probing the output T0
+		print("Done!")
 
 
 	########################################
